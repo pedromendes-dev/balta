@@ -26,3 +26,9 @@ Minha principal fonte de conhecimento durante o desafio foi o eBook gratuito [Fu
 
 ### Veja meu progresso no desafio
 https://github.com/pedromendes-dev/balta.git
+
+## Como executar
+
+No diretório `carnacode-2026/desafio-01-abstract-factory/src`, execute:
+
+`dotnet run Challenge.cs`
