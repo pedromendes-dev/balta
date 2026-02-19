@@ -18,6 +18,10 @@ Para manter consistência, use sempre o formato:
 
 `desafio-XX-nome-do-pattern`
 
+## Status
+
+- ✅ `desafio-01-abstract-factory` concluído
+
 Exemplo:
 
 - `desafio-04-builder`
