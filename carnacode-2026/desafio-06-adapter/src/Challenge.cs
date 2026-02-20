@@ -1,0 +1,238 @@
+#:property PublishAot=false
+
+// DESAFIO: Integração com Sistema Legado de Pagamentos
+// PROBLEMA: Um e-commerce moderno precisa integrar com um sistema legado de processamento
+// de pagamentos que usa interfaces e estruturas de dados incompatíveis com o sistema atual
+// O código atual não consegue usar o sistema legado sem grandes mudanças na aplicação
+
+using System;
+
+namespace DesignPatternChallenge
+{
+    // Contexto: Sistema moderno de e-commerce com interface padronizada
+    // Precisa integrar com sistema legado que tem interface completamente diferente
+    
+    // Interface moderna que a aplicação usa
+    public interface IPaymentProcessor
+    {
+        PaymentResult ProcessPayment(PaymentRequest request);
+        bool RefundPayment(string transactionId, decimal amount);
+        PaymentStatus CheckStatus(string transactionId);
+    }
+
+    public class PaymentRequest
+    {
+        public string CustomerEmail { get; set; }
+        public decimal Amount { get; set; }
+        public string CreditCardNumber { get; set; }
+        public string Cvv { get; set; }
+        public DateTime ExpirationDate { get; set; }
+        public string Description { get; set; }
+    }
+
+    public class PaymentResult
+    {
+        public bool Success { get; set; }
+        public string TransactionId { get; set; }
+        public string Message { get; set; }
+    }
+
+    public enum PaymentStatus
+    {
+        Pending,
+        Approved,
+        Declined,
+        Refunded
+    }
+
+    // Sistema legado com interface completamente diferente
+    public class LegacyPaymentSystem
+    {
+        // Métodos com assinaturas incompatíveis
+        public LegacyTransactionResponse AuthorizeTransaction(
+            string cardNum,
+            int cvvCode,
+            int expMonth,
+            int expYear,
+            double amountInCents,
+            string customerInfo)
+        {
+            Console.WriteLine($"[Sistema Legado] Autorizando transação...");
+            Console.WriteLine($"Cartão: {cardNum}");
+            Console.WriteLine($"Valor: {amountInCents / 100:C}");
+            
+            // Simulação de processamento
+            var response = new LegacyTransactionResponse
+            {
+                AuthCode = Guid.NewGuid().ToString().Substring(0, 8).ToUpper(),
+                ResponseCode = "00",
+                ResponseMessage = "TRANSACTION APPROVED",
+                TransactionRef = $"LEG{DateTime.Now.Ticks}"
+            };
+
+            return response;
+        }
+
+        public bool ReverseTransaction(string transRef, double amountInCents)
+        {
+            Console.WriteLine($"[Sistema Legado] Revertendo transação {transRef}");
+            Console.WriteLine($"Valor: {amountInCents / 100:C}");
+            return true;
+        }
+
+        public string QueryTransactionStatus(string transRef)
+        {
+            Console.WriteLine($"[Sistema Legado] Consultando transação {transRef}");
+            return "APPROVED";
+        }
+    }
+
+    public class LegacyTransactionResponse
+    {
+        public string AuthCode { get; set; }
+        public string ResponseCode { get; set; }
+        public string ResponseMessage { get; set; }
+        public string TransactionRef { get; set; }
+    }
+
+    // Implementação moderna que funciona bem
+    public class ModernPaymentProcessor : IPaymentProcessor
+    {
+        public PaymentResult ProcessPayment(PaymentRequest request)
+        {
+            Console.WriteLine("[Processador Moderno] Processando pagamento...");
+            return new PaymentResult
+            {
+                Success = true,
+                TransactionId = Guid.NewGuid().ToString(),
+                Message = "Pagamento aprovado"
+            };
+        }
+
+        public bool RefundPayment(string transactionId, decimal amount)
+        {
+            Console.WriteLine($"[Processador Moderno] Reembolsando {amount:C}");
+            return true;
+        }
+
+        public PaymentStatus CheckStatus(string transactionId)
+        {
+            return PaymentStatus.Approved;
+        }
+    }
+
+    public class LegacyPaymentAdapter : IPaymentProcessor
+    {
+        private readonly LegacyPaymentSystem _legacySystem;
+
+        public LegacyPaymentAdapter(LegacyPaymentSystem legacySystem)
+        {
+            _legacySystem = legacySystem;
+        }
+
+        public PaymentResult ProcessPayment(PaymentRequest request)
+        {
+            var cvvAsInt = int.Parse(request.Cvv);
+            var amountInCents = (double)(request.Amount * 100);
+
+            var legacyResponse = _legacySystem.AuthorizeTransaction(
+                request.CreditCardNumber,
+                cvvAsInt,
+                request.ExpirationDate.Month,
+                request.ExpirationDate.Year,
+                amountInCents,
+                request.CustomerEmail);
+
+            return new PaymentResult
+            {
+                Success = legacyResponse.ResponseCode == "00",
+                TransactionId = legacyResponse.TransactionRef,
+                Message = legacyResponse.ResponseMessage
+            };
+        }
+
+        public bool RefundPayment(string transactionId, decimal amount)
+        {
+            var amountInCents = (double)(amount * 100);
+            return _legacySystem.ReverseTransaction(transactionId, amountInCents);
+        }
+
+        public PaymentStatus CheckStatus(string transactionId)
+        {
+            var legacyStatus = _legacySystem.QueryTransactionStatus(transactionId);
+
+            return legacyStatus switch
+            {
+                "APPROVED" => PaymentStatus.Approved,
+                "DECLINED" => PaymentStatus.Declined,
+                "REFUNDED" => PaymentStatus.Refunded,
+                _ => PaymentStatus.Pending
+            };
+        }
+    }
+
+    // Classe da aplicação que usa a interface moderna
+    public class CheckoutService
+    {
+        private readonly IPaymentProcessor _paymentProcessor;
+
+        public CheckoutService(IPaymentProcessor paymentProcessor)
+        {
+            _paymentProcessor = paymentProcessor;
+        }
+
+        public void CompleteOrder(string customerEmail, decimal amount, string cardNumber)
+        {
+            Console.WriteLine($"\n=== Finalizando Pedido ===");
+            Console.WriteLine($"Cliente: {customerEmail}");
+            Console.WriteLine($"Valor: {amount:C}\n");
+
+            var request = new PaymentRequest
+            {
+                CustomerEmail = customerEmail,
+                Amount = amount,
+                CreditCardNumber = cardNumber,
+                Cvv = "123",
+                ExpirationDate = new DateTime(2026, 12, 31),
+                Description = "Compra de produtos"
+            };
+
+            var result = _paymentProcessor.ProcessPayment(request);
+
+            if (result.Success)
+            {
+                Console.WriteLine($"✅ Pedido aprovado! ID: {result.TransactionId}");
+            }
+            else
+            {
+                Console.WriteLine($"❌ Pagamento recusado: {result.Message}");
+            }
+        }
+    }
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine("=== Sistema de Checkout ===\n");
+
+            // Funciona bem com o processador moderno
+            var modernProcessor = new ModernPaymentProcessor();
+            var checkoutWithModern = new CheckoutService(modernProcessor);
+            checkoutWithModern.CompleteOrder("cliente@email.com", 150.00m, "4111111111111111");
+
+            Console.WriteLine("\n" + new string('-', 60) + "\n");
+
+            var legacySystem = new LegacyPaymentSystem();
+            var legacyAdapter = new LegacyPaymentAdapter(legacySystem);
+            var checkoutWithLegacy = new CheckoutService(legacyAdapter);
+            checkoutWithLegacy.CompleteOrder("cliente2@email.com", 200.00m, "4111111111111111");
+
+            Console.WriteLine("\n--- Consulta e reembolso via Adapter ---\n");
+            var status = legacyAdapter.CheckStatus("LEG123");
+            Console.WriteLine($"Status mapeado: {status}");
+            var refunded = legacyAdapter.RefundPayment("LEG123", 50.00m);
+            Console.WriteLine($"Reembolso realizado: {refunded}");
+        }
+    }
+}
